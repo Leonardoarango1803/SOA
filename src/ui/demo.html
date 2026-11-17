@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo guiada - SOA Senor de Luren</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .escenarios { display: flex; flex-wrap: wrap; gap: 8px; }
+    .escenarios button { margin-top: 0; }
+    .nodo rect { fill: var(--panel2); stroke: var(--border); stroke-width: 1.5; transition: all .15s; }
+    .nodo .nom { fill: var(--text); font: 600 13px system-ui; }
+    .nodo .rol { fill: var(--muted); font: 400 10px system-ui; }
+    .nodo.visitado rect { stroke: var(--ok); }
+    .nodo.activo rect { stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 0 7px var(--accent)); }
+    .nodo.error rect { stroke: var(--err); stroke-width: 3; filter: drop-shadow(0 0 7px var(--err)); }
+    .edge { stroke: var(--border); stroke-width: 2; fill: none; }
+    #diagrama { width: 100%; height: auto; }
+    .leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .leyenda span::before { content: "●"; margin-right: 5px; }
+    .lg-activo::before { color: var(--accent); }
+    .lg-visitado::before { color: var(--ok); }
+    .lg-error::before { color: var(--err); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SOA - Senor de Luren Express</h1>
+    <nav>
+      <a href="counter.html">Counter</a>
+      <a href="demo.html">Demo</a>
+      <a href="rastreo.html">Rastreo</a>
+      <a href="monitor.html">Monitoreo</a>
+    </nav>
+    <span class="sim">Demo guiada - cada paso se ilumina en vivo</span>
+  </header>
+  <main>
+    <div class="card">
+      <h2>Escenarios de un clic</h2>
+      <p class="muted">Cada boton ejecuta y narra un caso del diseno. Observa como el proceso atraviesa los servicios en el diagrama y en la linea de tiempo.</p>
+      <div class="escenarios">
+        <button data-esc="feliz">1. Flujo feliz</button>
+        <button data-esc="idempotencia">2. Idempotencia</button>
+        <button data-esc="compensacion">3. Compensacion (7C)</button>
+        <button data-esc="diferimiento">4. Diferimiento (8D)</button>
+        <button data-esc="circuito">5. Circuito abierto</button>
+      </div>
+      <div id="narracion" class="step-note" style="margin-top:12px"></div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <h2>Arquitectura en vivo</h2>
+        <svg id="diagrama" viewBox="0 0 820 528" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama de la arquitectura">
+          <!-- conectores -->
+          <g stroke-linecap="round">
+            <line class="edge" x1="140" y1="64" x2="140" y2="80" />
+            <line class="edge" x1="140" y1="124" x2="140" y2="140" />
+            <line class="edge" x1="140" y1="184" x2="140" y2="220" />
+            <line class="edge" x1="140" y1="264" x2="140" y2="280" />
+            <line class="edge" x1="140" y1="324" x2="140" y2="340" />
+            <line class="edge" x1="140" y1="384" x2="140" y2="400" />
+            <line class="edge" x1="140" y1="444" x2="140" y2="460" />
+            <line class="edge" x1="240" y1="162" x2="556" y2="162" />
+            <line class="edge" x1="640" y1="184" x2="607" y2="300" />
+            <line class="edge" x1="680" y1="184" x2="712" y2="300" />
+          </g>
+          <!-- nodos columna izquierda (pipeline sincrono) -->
+          <g class="nodo" id="node-counter"><rect x="40" y="20" width="200" height="44" rx="8"/><text class="nom" x="140" y="40" text-anchor="middle">Counter</text><text class="rol" x="140" y="56" text-anchor="middle">consumidor</text></g>
+          <g class="nodo" id="node-gateway"><rect x="40" y="80" width="200" height="44" rx="8"/><text class="nom" x="140" y="100" text-anchor="middle">API Gateway</text><text class="rol" x="140" y="116" text-anchor="middle">1-2 auth + authz</text></g>
+          <g class="nodo" id="node-orquestador"><rect x="40" y="140" width="200" height="44" rx="8"/><text class="nom" x="140" y="160" text-anchor="middle">Orquestador</text><text class="rol" x="140" y="176" text-anchor="middle">3 saga</text></g>
+          <g class="nodo" id="node-clientes"><rect x="40" y="220" width="200" height="44" rx="8"/><text class="nom" x="140" y="240" text-anchor="middle">Clientes</text><text class="rol" x="140" y="256" text-anchor="middle">4 buscarOCrear</text></g>
+          <g class="nodo" id="node-tarifario"><rect x="40" y="280" width="200" height="44" rx="8"/><text class="nom" x="140" y="300" text-anchor="middle">Tarifario</text><text class="rol" x="140" y="316" text-anchor="middle">5 cotizar</text></g>
+          <g class="nodo" id="node-encomiendas"><rect x="40" y="340" width="200" height="44" rx="8"/><text class="nom" x="140" y="360" text-anchor="middle">Encomiendas</text><text class="rol" x="140" y="376" text-anchor="middle">6 crear / 7C anular</text></g>
+          <g class="nodo" id="node-cobros"><rect x="40" y="400" width="200" height="44" rx="8"/><text class="nom" x="140" y="420" text-anchor="middle">Cobros y caja</text><text class="rol" x="140" y="436" text-anchor="middle">7 registrarCobro</text></g>
+          <g class="nodo" id="node-facturacion"><rect x="40" y="460" width="200" height="44" rx="8"/><text class="nom" x="140" y="480" text-anchor="middle">Facturacion</text><text class="rol" x="140" y="496" text-anchor="middle">8 emitir / 8D diferir</text></g>
+          <!-- columna derecha (coreografia asincrona) -->
+          <g class="nodo" id="node-broker"><rect x="560" y="140" width="200" height="44" rx="8"/><text class="nom" x="660" y="160" text-anchor="middle">Broker</text><text class="rol" x="660" y="176" text-anchor="middle">9 eventos (outbox)</text></g>
+          <g class="nodo" id="node-trazabilidad"><rect x="512" y="300" width="95" height="56" rx="8"/><text class="nom" x="559" y="322" text-anchor="middle" style="font-size:12px">Trazab.</text><text class="rol" x="559" y="338" text-anchor="middle">10 evento</text></g>
+          <g class="nodo" id="node-notificaciones"><rect x="665" y="300" width="95" height="56" rx="8"/><text class="nom" x="712" y="322" text-anchor="middle" style="font-size:12px">Notif.</text><text class="rol" x="712" y="338" text-anchor="middle">11 aviso</text></g>
+        </svg>
+        <div class="leyenda">
+          <span class="lg-visitado">visitado</span>
+          <span class="lg-activo">paso actual</span>
+          <span class="lg-error">error / reintento</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Resultado</h2>
+        <div id="resultado"><p class="muted">Elige un escenario para empezar.</p></div>
+        <h2 style="margin-top:16px">Linea de tiempo</h2>
+        <ul class="timeline" id="timeline"><li class="muted" style="border-color:var(--border)">Sin actividad.</li></ul>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { $, $$, api, uuid, nuevoCorrelationId, badgeEstado, marcarNav } from "./app.js";
+    marcarNav();
+
+    let token = null;
+    (async () => {
+      const r = await api("/api/login", { method: "POST", body: { sub: "c-ica" } });
+      token = r.data.token;
+    })();
+
+    const ESCENARIOS = {
+      feliz: { titulo: "1. Flujo feliz", flags: {}, veces: 1, desc: "Registro completo (pasos 1-11): autenticacion, cliente, tarifa, orden, cobro, comprobante y eventos.", pregunta: "Responde: BPM-SOA e integracion." },
+      idempotencia: { titulo: "2. Idempotencia", flags: {}, idemFijo: true, veces: 2, desc: "Se envia DOS veces la MISMA solicitud (misma clave). La 2a NO duplica: devuelve la orden original.", pregunta: "Responde: ¿como evitan duplicados? (9.3)" },
+      compensacion: { titulo: "3. Compensacion (7C)", flags: { failCobros: true }, veces: 1, desc: "Cobros no responde: reintentos con backoff y luego se ANULA la orden (compensacion saga).", pregunta: "Responde: ¿que pasa si un servicio falla? (9.5)" },
+      diferimiento: { titulo: "4. Diferimiento (8D)", flags: { failSunat: true }, veces: 1, desc: "SUNAT/OSE no responde: la emision se difiere. Estado 'Comprobante pendiente'; el envio NO se pierde.", pregunta: "Responde: confiabilidad ante terceros (RN-05)." },
+      circuito: { titulo: "5. Circuito abierto", flags: { failCobros: true }, veces: 2, desc: "Tras 5 fallos seguidos a Cobros, el interruptor de circuito se ABRE: se responde de inmediato sin invocarlo.", pregunta: "Responde: circuit breaker (9.2)." },
+    };
+
+    const payloadDemo = () => ({
+      sede: "Ica", tipoCliente: "normal",
+      destinatario: { nombre: "Maria Quispe", documento: "41222333", telefono: "912345678", direccion: "Jr. Lima 456", referencia: "Puerta azul" },
+      envio: { origen: "Ica", destino: "Nazca", peso: 3, volumen: 0.02, bultos: 1, modalidad: "domicilio" },
+      pago: { medio: "efectivo", turno: "manana" },
+    });
+
+    // --- Diagrama ---
+    const NODOS = ["gateway", "orquestador", "clientes", "tarifario", "encomiendas", "cobros", "facturacion", "broker", "trazabilidad", "notificaciones"];
+    function nodoDe(l) {
+      if (l.servicio === "httpClient") return (l.operacion || "").split(":")[1] || null;
+      if (l.servicio === "gateway" && (l.operacion || "").includes("/api/encomiendas")) return "gateway";
+      return NODOS.includes(l.servicio) ? l.servicio : null;
+    }
+    function limpiarDiagrama() {
+      $$(".nodo").forEach((n) => n.classList.remove("activo", "visitado", "error"));
+    }
+    function iluminar(l) {
+      const id = nodoDe(l);
+      if (!id) return;
+      const g = document.getElementById("node-" + id);
+      if (!g) return;
+      $$(".nodo.activo").forEach((n) => n.classList.remove("activo"));
+      g.classList.add("visitado", "activo");
+      if (l.resultado === "error") g.classList.add("error");
+      else g.classList.remove("error");
+    }
+
+    // --- Linea de tiempo ---
+    const MAPA = {
+      "gateway|POST /api/encomiendas": "1-2. Gateway: autenticado y autorizado",
+      "orquestador|iniciarRegistro": "3. Orquestador inicia el proceso",
+      "clientes|buscarOCrearCliente": "4. Clientes: destinatario validado",
+      "tarifario|cotizarEnvio": "5. Tarifario: envio cotizado",
+      "encomiendas|crearEncomienda": "6. Encomiendas: orden y codigo creados",
+      "cobros|registrarCobro": "7. Cobros: cobro registrado",
+      "orquestador|compensar": "7C. Compensacion: se anulara la orden",
+      "encomiendas|anularEncomienda": "7C. Encomiendas: orden anulada",
+      "facturacion|emitirComprobante": "8. Facturacion: comprobante emitido",
+      "orquestador|diferir": "8D. Diferimiento: SUNAT/OSE no responde",
+      "facturacion|encolarEmision": "8D. Facturacion: emision diferida",
+      "broker|publicar": "9. Broker: evento publicado",
+      "trazabilidad|registrarEvento": "10. Trazabilidad: evento registrado",
+      "notificaciones|enviarNotificacion": "11. Notificaciones: aviso (simulado)",
+      "orquestador|registrarEncomienda": "Proceso completo",
+    };
+    const OMITIR = new Set(["actualizarEstado", "outbox.guardar"]);
+    function paso(l) {
+      if (OMITIR.has(l.operacion)) return null;
+      if (l.servicio === "httpClient" && (l.operacion || "").startsWith("llamar:")) return { txt: `Reintento hacia ${l.operacion.split(":")[1]} (intento ${l.intento})`, cls: "var(--warn)" };
+      if (l.servicio === "httpClient" && (l.operacion || "").startsWith("circuito:")) return { txt: `Circuito abierto: ${l.operacion.split(":")[1]}`, cls: "var(--err)" };
+      const txt = MAPA[`${l.servicio}|${l.operacion}`];
+      if (!txt) return null;
+      return { txt, cls: l.resultado === "error" ? "var(--err)" : (l.operacion === "registrarEncomienda" ? "var(--ok)" : "var(--accent)"), detalle: l.detalle };
+    }
+    function agregarPaso(l) {
+      const p = paso(l);
+      if (!p) return;
+      const ul = $("#timeline");
+      if (ul.children.length === 1 && ul.children[0].classList.contains("muted")) ul.innerHTML = "";
+      const li = document.createElement("li");
+      li.style.setProperty("--dot", p.cls);
+      li.innerHTML = `<b style="color:${p.cls}">${p.txt}</b><br><small>${l.ts.slice(11, 23)}${p.detalle ? " - " + p.detalle : ""}</small>`;
+      ul.appendChild(li);
+      ul.scrollTop = ul.scrollHeight;
+    }
+
+    function narrar(esc, estado) {
+      $("#narracion").innerHTML = `<b>${esc.titulo}</b> &mdash; ${esc.desc} <span class="muted">${esc.pregunta}</span> ${estado ? `<span class="badge b-info">${estado}</span>` : ""}`;
+    }
+
+    async function correrUno(cid, idem) {
+      // marcar el counter como punto de partida
+      document.getElementById("node-counter").classList.add("visitado", "activo");
+      const es = new EventSource("/api/stream/" + encodeURIComponent(cid));
+      es.onmessage = (ev) => { try { const l = JSON.parse(ev.data); iluminar(l); agregarPaso(l); } catch {} };
+      const r = await api("/api/encomiendas", { method: "POST", token, idemKey: idem, correlationId: cid, body: payloadDemo() });
+      await new Promise((res) => setTimeout(res, 1700)); // dejar fluir los eventos asincronos
+      es.close();
+      $$(".nodo.activo").forEach((n) => n.classList.remove("activo"));
+      return r;
+    }
+
+    function mostrarResultado(r, nota) {
+      if (!r) return;
+      if (!r.ok) {
+        $("#resultado").innerHTML = `<span class="badge b-err">${r.data.error?.codigo || "Error"}</span><p>${r.data.error?.mensaje || ""}</p>`;
+        return;
+      }
+      const d = r.data;
+      $("#resultado").innerHTML = `
+        <div style="margin-bottom:8px">${badgeEstado(d.estado)} ${d.comprobante?.idempotente ? '<span class="badge b-info">idempotente: respuesta original</span>' : ""}</div>
+        <div class="kv"><span>Codigo de rastreo</span><span><b>${d.codigoRastreo}</b></span></div>
+        <div class="kv"><span>correlationId</span><span>${d.correlationId}</span></div>
+        <div class="kv"><span>Tarifa</span><span>S/ ${d.tarifa}</span></div>
+        ${d.nota ? `<p class="step-note">${d.nota}</p>` : ""}
+        ${nota ? `<p class="step-note">${nota}</p>` : ""}`;
+    }
+
+    async function correr(tipo) {
+      if (!token) { $("#resultado").innerHTML = `<span class="badge b-warn">Cargando sesion, intenta de nuevo.</span>`; return; }
+      const esc = ESCENARIOS[tipo];
+      $$(".escenarios button").forEach((b) => (b.disabled = true));
+      limpiarDiagrama();
+      $("#timeline").innerHTML = "";
+      narrar(esc, "corriendo...");
+
+      // Dejar cada escenario independiente: reiniciar circuitos y flags.
+      await api("/api/monitor/reset-circuitos", { method: "POST" });
+      await api("/api/monitor/flags", { method: "POST", body: { failCobros: false, failSunat: false, slowCobros: false } });
+      if (Object.keys(esc.flags).length) await api("/api/monitor/flags", { method: "POST", body: esc.flags });
+
+      const idemFijo = esc.idemFijo ? uuid() : null;
+      let ultimo, nota;
+      for (let i = 1; i <= esc.veces; i++) {
+        if (esc.veces > 1) narrar(esc, `ejecucion ${i} de ${esc.veces}...`);
+        ultimo = await correrUno(nuevoCorrelationId(), idemFijo || uuid());
+        if (esc.veces > 1 && i < esc.veces) await new Promise((r) => setTimeout(r, 500));
+      }
+      if (tipo === "idempotencia") nota = "La segunda ejecucion devolvio la MISMA orden (idempotente), sin crear un duplicado.";
+      if (tipo === "circuito") nota = "En la 2a ejecucion el circuito de Cobros se abrio tras 5 fallos; se responde de inmediato sin invocarlo.";
+
+      await api("/api/monitor/flags", { method: "POST", body: { failCobros: false, failSunat: false, slowCobros: false } });
+      narrar(esc, "listo");
+      mostrarResultado(ultimo, nota);
+      $$(".escenarios button").forEach((b) => (b.disabled = false));
+    }
+
+    $$(".escenarios button").forEach((b) => (b.onclick = () => correr(b.dataset.esc)));
+  </script>
+</body>
+</html>

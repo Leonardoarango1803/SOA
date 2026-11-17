@@ -10,7 +10,7 @@ import { nuevoCorrelationId, nuevaClaveIdempotencia } from "../shared/ids.js";
 import { log, reconstruir, ultimosLogs, bus } from "../shared/logger.js";
 import { ErrorSOA } from "../shared/errors.js";
 import * as metrics from "../shared/metrics.js";
-import { estadoCircuitos } from "../shared/httpClient.js";
+import { estadoCircuitos, reiniciarCircuitos } from "../shared/httpClient.js";
 import { estadoColas, verDLQ } from "../shared/broker.js";
 import { llamar } from "../shared/httpClient.js";
 import { registrarEncomienda } from "../orchestrator/registrar.js";
@@ -107,6 +107,10 @@ export function crearApp() {
   app.get("/api/monitor/dlq", (req, res) => res.json(verDLQ()));
   app.get("/api/monitor/proceso/:correlationId", (req, res) => {
     res.json(db.orquestador.prepare("SELECT * FROM procesos WHERE correlation_id = ?").get(req.params.correlationId) || { error: "sin estado" });
+  });
+  app.post("/api/monitor/reset-circuitos", (req, res) => {
+    reiniciarCircuitos();
+    res.json({ ok: true });
   });
   app.post("/api/monitor/reset", (req, res) => {
     reiniciarDatos();

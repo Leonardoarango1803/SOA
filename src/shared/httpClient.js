@@ -25,6 +25,11 @@ export function estadoCircuitos() {
   return out;
 }
 
+// Reinicia el estado de los interruptores de circuito (util para dejar escenarios de demo independientes).
+export function reiniciarCircuitos() {
+  circuitos.clear();
+}
+
 async function unaLlamada(destino, path, { method, body, correlationId, idemKey, perfil }, timeoutMs) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
