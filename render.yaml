@@ -1,0 +1,20 @@
+# Blueprint de Render (https://render.com). Render detecta este archivo y crea el servicio.
+# El prototipo es UN proceso Node que levanta el gateway + los 8 servicios; Render solo
+# expone el gateway en el puerto que inyecta en process.env.PORT.
+services:
+  - type: web
+    name: soa-senor-de-luren
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # node:sqlite requiere Node 22.5 o superior.
+      - key: NODE_VERSION
+        value: "22.12.0"
+      # Demo mas agil en la nube (acorta las esperas de backoff). Usa 1 para valores reales.
+      - key: SOA_SPEED
+        value: "3"
+    # NOTA: en el plan free el disco es efimero: las bases SQLite se reinician en cada
+    # redeploy o tras inactividad. Para datos persistentes, usa un plan con disco y define
+    # SOA_DB_DIR apuntando al punto de montaje (ver DEPLOY.md).

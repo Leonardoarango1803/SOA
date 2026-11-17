@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monitoreo - SOA Senor de Luren</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>SOA - Senor de Luren Express</h1>
+    <nav>
+      <a href="counter.html">Counter</a>
+      <a href="rastreo.html">Rastreo</a>
+      <a href="monitor.html">Monitoreo</a>
+    </nav>
+    <span class="sim">Monitoreo y trazabilidad (documento 11)</span>
+  </header>
+  <main>
+    <div class="grid cols-2">
+      <div class="card">
+        <h2>Interruptores de falla (demo)</h2>
+        <p class="muted">Simulan condiciones de fallo para demostrar confiabilidad. Todo es simulado.</p>
+        <div class="switch"><span>Cobros no disponible &rarr; compensacion (7C)</span><div class="toggle" data-flag="failCobros"></div></div>
+        <div class="switch"><span>SUNAT/OSE no responde &rarr; diferimiento (8D)</span><div class="toggle" data-flag="failSunat"></div></div>
+        <div class="switch"><span>Cobros lento &rarr; timeout + backoff</span><div class="toggle" data-flag="slowCobros"></div></div>
+        <button class="sec" id="btnReset">Reiniciar datos de la demo</button>
+        <span id="resetMsg" class="muted"></span>
+      </div>
+      <div class="card">
+        <h2>Salud de los servicios</h2>
+        <div id="health" class="grid" style="grid-template-columns:1fr 1fr"></div>
+        <h2 style="margin-top:16px">Negocio y colas</h2>
+        <div id="negocio"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Metricas por servicio (documento 11.5)</h2>
+      <table>
+        <thead><tr><th>Servicio</th><th>Llamadas</th><th>Errores</th><th>Tasa error</th><th>Reintentos</th><th>Circuito</th><th>Latencia p95</th></tr></thead>
+        <tbody id="metricas"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Reconstruir una operacion (documento 11.4)</h2>
+      <p class="muted">Pega un correlationId o un codigo de rastreo para ver todos los pasos ordenados por tiempo.</p>
+      <div class="row">
+        <div><input id="recon" placeholder="corr-... o SLE-..." /></div>
+        <div style="flex:0 0 auto"><button id="btnRecon" style="margin-top:0">Reconstruir</button></div>
+      </div>
+      <div id="reconResult" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Logs recientes (correlationId en cada linea)</h2>
+      <pre id="logs"></pre>
+    </div>
+  </main>
+
+  <script type="module">
+    import { $, $$, api, marcarNav } from "./app.js";
+    marcarNav();
+
+    async function cargarFlags() {
+      const f = (await api("/api/monitor/flags")).data;
+      $$(".toggle").forEach(t => t.classList.toggle("on", !!f[t.dataset.flag]));
+    }
+    $$(".toggle").forEach(t => t.onclick = async () => {
+      const nuevo = !t.classList.contains("on");
+      await api("/api/monitor/flags", { method: "POST", body: { [t.dataset.flag]: nuevo } });
+      cargarFlags();
+    });
+
+    function color(est) { return est === "vivo" ? "b-ok" : est === "caido" ? "b-err" : "b-warn"; }
+
+    async function refrescar() {
+      const salud = (await api("/api/monitor/health")).data;
+      $("#health").innerHTML = Object.entries(salud).map(([n, e]) => `<div class="kv"><span>${n}</span><span class="badge ${color(e)}">${e}</span></div>`).join("");
+
+      const m = (await api("/api/monitor/metrics")).data;
+      $("#metricas").innerHTML = Object.entries(m.servicios || {}).map(([n, s]) => {
+        const circ = m.circuitos?.[n]?.abierto ? '<span class="badge b-err">abierto</span>' : '<span class="badge b-ok">cerrado</span>';
+        const tasa = s.tasaError > 1 ? `<span class="badge b-warn">${s.tasaError}%</span>` : `${s.tasaError}%`;
+        return `<tr><td>${n}</td><td>${s.llamadas}</td><td>${s.errores}</td><td>${tasa}</td><td>${s.reintentos}</td><td>${circ}</td><td>${s.latenciaP95ms} ms</td></tr>`;
+      }).join("");
+
+      $("#negocio").innerHTML = `
+        <div class="kv"><span>Pendientes de pago</span><span>${m.negocio.pendientesDePago}</span></div>
+        <div class="kv"><span>Comprobantes pendientes</span><span>${m.negocio.comprobantesPendientes}</span></div>
+        <div class="kv"><span>Outbox</span><span>${m.colasBroker.outbox}</span></div>
+        <div class="kv"><span>Pendientes broker</span><span>${m.colasBroker.pendientes}</span></div>
+        <div class="kv"><span>Cola de fallidos (DLQ)</span><span>${m.colasBroker.dlq}</span></div>`;
+
+      const logs = (await api("/api/monitor/logs?n=60")).data;
+      $("#logs").textContent = logs.map(l => `${l.ts.slice(11,23)} [${l.servicio || "-"}] ${l.operacion || ""} ${l.resultado}${l.codigoError ? " " + l.codigoError : ""}${l.detalle ? " :: " + l.detalle : ""}`).join("\n");
+    }
+
+    $("#btnRecon").onclick = async () => {
+      const v = $("#recon").value.trim();
+      if (!v) return;
+      const q = v.startsWith("SLE-") ? "codigoRastreo=" + encodeURIComponent(v) : "correlationId=" + encodeURIComponent(v);
+      const r = (await api("/api/monitor/logs?" + q)).data;
+      if (!Array.isArray(r) || r.length === 0) { $("#reconResult").innerHTML = `<span class="badge b-warn">Sin registros.</span>`; return; }
+      $("#reconResult").innerHTML = `<table><thead><tr><th>Hora</th><th>Componente</th><th>Operacion</th><th>Resultado</th><th>Detalle</th></tr></thead><tbody>${
+        r.map(l => `<tr><td>${l.ts.slice(11,23)}</td><td>${l.servicio || "-"}</td><td>${l.operacion || ""}</td><td>${l.resultado}${l.intento ? " (int " + l.intento + ")" : ""}</td><td>${l.codigoError ? l.codigoError + " - " : ""}${l.detalle || ""}</td></tr>`).join("")
+      }</tbody></table>`;
+    };
+
+    $("#btnReset").onclick = async () => {
+      await api("/api/monitor/reset", { method: "POST" });
+      $("#resetMsg").textContent = "Datos reiniciados.";
+      setTimeout(() => ($("#resetMsg").textContent = ""), 2500);
+      refrescar();
+    };
+
+    await cargarFlags();
+    await refrescar();
+    setInterval(refrescar, 2500);
+  </script>
+</body>
+</html>

@@ -1,0 +1,119 @@
+### Invocaciones de ejemplo del prototipo SOA - Senor de Luren Express (APF3)
+### Usar con la extension "REST Client" de VS Code, o traducir a curl (ver README).
+### Requiere el servidor levantado: npm start
+
+@base = http://127.0.0.1:4000
+
+### 1. Login (counter de Ica) -> devuelve un token
+# @name login
+POST {{base}}/api/login
+Content-Type: application/json
+
+{ "sub": "c-ica" }
+
+### Guardar el token manualmente de la respuesta anterior:
+@token = {{login.response.body.token}}
+
+### 2. Flujo feliz: registrar una encomienda (pasos 1-11)
+# @name registrar
+POST {{base}}/api/encomiendas
+Content-Type: application/json
+Authorization: Bearer {{token}}
+x-idempotency-key: demo-key-0001
+
+{
+  "sede": "Ica",
+  "tipoCliente": "normal",
+  "destinatario": { "nombre": "Maria Quispe", "documento": "41222333", "telefono": "912345678", "direccion": "Jr. Lima 456", "referencia": "Puerta azul" },
+  "envio": { "origen": "Ica", "destino": "Nazca", "peso": 3, "volumen": 0.02, "bultos": 1, "modalidad": "domicilio" },
+  "pago": { "medio": "efectivo", "turno": "manana" }
+}
+
+### 3. Idempotencia: reenviar la MISMA solicitud con la MISMA clave -> no duplica
+POST {{base}}/api/encomiendas
+Content-Type: application/json
+Authorization: Bearer {{token}}
+x-idempotency-key: demo-key-0001
+
+{
+  "sede": "Ica",
+  "tipoCliente": "normal",
+  "destinatario": { "nombre": "Maria Quispe", "documento": "41222333", "telefono": "912345678", "direccion": "Jr. Lima 456", "referencia": "Puerta azul" },
+  "envio": { "origen": "Ica", "destino": "Nazca", "peso": 3, "volumen": 0.02, "bultos": 1, "modalidad": "domicilio" },
+  "pago": { "medio": "efectivo", "turno": "manana" }
+}
+
+### 4. Seguridad: el counter de Ica intenta operar en la sede Lima -> 403 ACCESO_DENEGADO
+POST {{base}}/api/encomiendas
+Content-Type: application/json
+Authorization: Bearer {{token}}
+x-idempotency-key: demo-key-sec
+
+{
+  "sede": "Lima",
+  "destinatario": { "nombre": "Test", "telefono": "999", "direccion": "x", "referencia": "y" },
+  "envio": { "origen": "Lima", "destino": "Nazca", "peso": 1, "volumen": 0.01, "bultos": 1, "modalidad": "agencia" },
+  "pago": { "medio": "efectivo" }
+}
+
+### 5. Activar falla de cobros (demo de compensacion 7C)
+POST {{base}}/api/monitor/flags
+Content-Type: application/json
+
+{ "failCobros": true }
+
+### 6. Registrar con cobros caido -> estado Anulada (compensacion)
+POST {{base}}/api/encomiendas
+Content-Type: application/json
+Authorization: Bearer {{token}}
+x-idempotency-key: demo-key-comp
+
+{
+  "sede": "Ica",
+  "destinatario": { "nombre": "Juan Perez", "telefono": "900", "direccion": "x", "referencia": "y" },
+  "envio": { "origen": "Ica", "destino": "Palpa", "peso": 2, "volumen": 0.01, "bultos": 1, "modalidad": "agencia" },
+  "pago": { "medio": "efectivo" }
+}
+
+### 7. Desactivar falla de cobros
+POST {{base}}/api/monitor/flags
+Content-Type: application/json
+
+{ "failCobros": false }
+
+### 8. Activar falla de SUNAT/OSE (demo de diferimiento 8D)
+POST {{base}}/api/monitor/flags
+Content-Type: application/json
+
+{ "failSunat": true }
+
+### 9. Registrar con SUNAT caido -> estado Comprobante pendiente
+POST {{base}}/api/encomiendas
+Content-Type: application/json
+Authorization: Bearer {{token}}
+x-idempotency-key: demo-key-dif
+
+{
+  "sede": "Ica",
+  "destinatario": { "nombre": "Ana Lopez", "telefono": "901", "direccion": "x", "referencia": "y" },
+  "envio": { "origen": "Ica", "destino": "Chimbote", "peso": 2, "volumen": 0.01, "bultos": 1, "modalidad": "agencia" },
+  "pago": { "medio": "efectivo" }
+}
+
+### 10. Desactivar falla de SUNAT/OSE
+POST {{base}}/api/monitor/flags
+Content-Type: application/json
+
+{ "failSunat": false }
+
+### 11. Consulta publica de rastreo (reemplazar por un codigo real)
+GET {{base}}/api/rastreo/SLE-XXXXX-XXXXX
+
+### 12. Metricas
+GET {{base}}/api/monitor/metrics
+
+### 13. Reconstruir una operacion por correlationId (reemplazar)
+GET {{base}}/api/monitor/logs?correlationId=corr-xxxxxxxx
+
+### 14. Salud de los servicios
+GET {{base}}/api/monitor/health

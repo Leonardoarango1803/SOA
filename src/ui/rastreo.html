@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rastreo - SOA Senor de Luren</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>SOA - Senor de Luren Express</h1>
+    <nav>
+      <a href="counter.html">Counter</a>
+      <a href="rastreo.html">Rastreo</a>
+      <a href="monitor.html">Monitoreo</a>
+    </nav>
+    <span class="sim">Consulta publica (P2) - sin datos personales</span>
+  </header>
+  <main>
+    <div class="grid cols-2">
+      <div class="card">
+        <h2>Consulta publica de rastreo</h2>
+        <p class="muted">Ingresa tu codigo de seguimiento (ej. SLE-XXXXX-XXXXX). No requiere sesion; solo muestra estado e historial, sin datos personales (documento 10.4).</p>
+        <div class="row">
+          <div><input id="codigo" placeholder="SLE-XXXXX-XXXXX" /></div>
+          <div style="flex:0 0 auto"><button id="btnBuscar" style="margin-top:0">Consultar</button></div>
+        </div>
+        <div id="resultado" style="margin-top:16px"></div>
+      </div>
+
+      <div class="card">
+        <h2>Envios recientes <span class="badge b-warn">solo demo</span></h2>
+        <p class="muted">Ayuda para la demostracion: lista los ultimos envios registrados para elegir uno. En produccion el rastreo publico no listaria envios.</p>
+        <button class="sec" id="btnRefrescar">Actualizar lista</button>
+        <table style="margin-top:10px">
+          <thead><tr><th>Codigo</th><th>Estado</th><th></th></tr></thead>
+          <tbody id="recientes"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { $, api, badgeEstado, marcarNav } from "./app.js";
+    marcarNav();
+
+    const pre = new URLSearchParams(location.search).get("codigo");
+    if (pre) $("#codigo").value = pre;
+
+    async function buscar() {
+      const codigo = $("#codigo").value.trim();
+      if (!codigo) return;
+      $("#resultado").innerHTML = `<p class="muted">Consultando...</p>`;
+      const r = await api("/api/rastreo/" + encodeURIComponent(codigo));
+      if (!r.ok) {
+        $("#resultado").innerHTML = `<span class="badge b-err">${r.data.error?.codigo || "No encontrado"}</span> <p>${r.data.error?.mensaje || ""}</p>`;
+        return;
+      }
+      const d = r.data;
+      $("#resultado").innerHTML = `
+        <div class="kv"><span>Codigo</span><span><b>${d.codigoRastreo}</b></span></div>
+        <div class="kv"><span>Estado actual</span><span>${badgeEstado(d.estadoActual)}</span></div>
+        <h2 style="margin-top:16px">Historial</h2>
+        <ul class="timeline">${d.historial.map(h => `<li><b>${h.estado}</b><br><small>${h.sede || ""} - ${new Date(h.fecha).toLocaleString()}</small></li>`).join("")}</ul>`;
+    }
+
+    async function cargarRecientes() {
+      const r = await api("/api/rastreo");
+      const filas = r.data?.recientes || [];
+      $("#recientes").innerHTML = filas.length
+        ? filas.map(f => `<tr><td>${f.codigoRastreo}</td><td>${badgeEstado(f.estadoActual)}</td><td><button class="sec ver" data-cod="${f.codigoRastreo}" style="margin:0;padding:4px 10px">Ver</button></td></tr>`).join("")
+        : `<tr><td colspan="3" class="muted">Sin envios aun. Registra uno en Counter.</td></tr>`;
+      document.querySelectorAll(".ver").forEach(b => b.onclick = () => { $("#codigo").value = b.dataset.cod; buscar(); });
+    }
+
+    $("#btnBuscar").onclick = buscar;
+    $("#btnRefrescar").onclick = cargarRecientes;
+    $("#codigo").addEventListener("keydown", e => { if (e.key === "Enter") buscar(); });
+    await cargarRecientes();
+    if (pre) buscar();
+  </script>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Counter - SOA Senor de Luren</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>SOA - Senor de Luren Express</h1>
+    <nav>
+      <a href="counter.html">Counter</a>
+      <a href="rastreo.html">Rastreo</a>
+      <a href="monitor.html">Monitoreo</a>
+    </nav>
+    <span class="sim">Prototipo APF3 - SUNAT/OSE, mensajeria y GPS simulados</span>
+  </header>
+  <main>
+    <div class="grid cols-2">
+      <div class="card">
+        <h2>1. Sesion del counter</h2>
+        <label>Usuario (perfil y sede)</label>
+        <select id="usuario"></select>
+        <button id="btnLogin">Iniciar sesion</button>
+        <div id="sesion" class="step-note"></div>
+      </div>
+
+      <div class="card">
+        <h2>Resultado del registro</h2>
+        <div id="resultado"><p class="muted">Registra una encomienda para ver el resultado del proceso (pasos 1-11).</p></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>2. Registrar encomienda (proceso de la seccion 9)</h2>
+      <div class="grid cols-2">
+        <div>
+          <label>Sede de origen (seguridad: debe coincidir con tu sede)</label>
+          <select id="sede"></select>
+          <label>Destino (cobertura)</label>
+          <select id="destino"></select>
+          <div class="row">
+            <div><label>Peso (kg)</label><input id="peso" type="number" value="3" step="0.5" /></div>
+            <div><label>Volumen (m3)</label><input id="volumen" type="number" value="0.02" step="0.01" /></div>
+            <div><label>Bultos</label><input id="bultos" type="number" value="1" /></div>
+          </div>
+          <label>Modalidad</label>
+          <select id="modalidad"><option value="agencia">Recojo en agencia</option><option value="domicilio">Entrega a domicilio</option></select>
+        </div>
+        <div>
+          <label>Destinatario - nombre</label>
+          <input id="dNombre" value="Maria Quispe" />
+          <div class="row">
+            <div><label>Documento</label><input id="dDoc" value="41222333" /></div>
+            <div><label>Telefono</label><input id="dTel" value="912345678" /></div>
+          </div>
+          <label>Direccion</label>
+          <input id="dDir" value="Jr. Lima 456, Nazca" />
+          <label>Referencia</label>
+          <input id="dRef" value="Puerta azul" />
+          <label>Clave de idempotencia (reenviar la misma no duplica)</label>
+          <div class="row">
+            <div><input id="idem" /></div>
+            <div style="flex:0 0 auto"><button class="sec" id="btnNuevaClave" style="margin-top:0">Nueva clave</button></div>
+          </div>
+        </div>
+      </div>
+      <button id="btnRegistrar">Registrar encomienda</button>
+      <span class="muted" style="margin-left:10px">Para probar fallas/compensacion usa la pagina de Monitoreo.</span>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Linea de tiempo del proceso (en vivo)</h2>
+      <p class="muted">Cada paso aparece conforme ocurre, atravesando los servicios. Observa aqui los reintentos, la compensacion (7C) o el diferimiento (8D) en tiempo real.</p>
+      <ul class="timeline" id="timeline"><li class="muted" style="border-color:var(--border)">Sin actividad todavia.</li></ul>
+    </div>
+  </main>
+
+  <script type="module">
+    import { $, api, uuid, nuevoCorrelationId, badgeEstado, marcarNav } from "./app.js";
+    marcarNav();
+    let token = null, usuarioActual = null;
+
+    const seed = (await api("/api/seed")).data;
+    $("#usuario").innerHTML = seed.usuarios.map(u => `<option value="${u.sub}">${u.nombre} (${u.perfil} - ${u.sede})</option>`).join("");
+    $("#sede").innerHTML = seed.agencias.map(a => `<option>${a}</option>`).join("");
+    $("#destino").innerHTML = seed.agencias.filter(a => a !== "Lima").map(a => `<option ${a==="Nazca"?"selected":""}>${a}</option>`).join("");
+    $("#idem").value = uuid();
+    $("#btnNuevaClave").onclick = () => { $("#idem").value = uuid(); };
+
+    $("#btnLogin").onclick = async () => {
+      const r = await api("/api/login", { method: "POST", body: { sub: $("#usuario").value } });
+      if (!r.ok) { $("#sesion").innerHTML = `<span class="badge b-err">Error de login</span>`; return; }
+      token = r.data.token; usuarioActual = r.data.usuario;
+      $("#sede").value = usuarioActual.sede;
+      $("#sesion").innerHTML = `Sesion iniciada: <b>${usuarioActual.nombre}</b> - perfil <b>${usuarioActual.perfil}</b>, sede <b>${usuarioActual.sede}</b>. Token de vida corta emitido.`;
+    };
+
+    // Traduce un registro de log a un paso legible de la linea de tiempo.
+    const MAPA = {
+      "gateway|POST /api/encomiendas": "1-2. Gateway: autenticado y autorizado",
+      "orquestador|iniciarRegistro": "3. Orquestador inicia el proceso",
+      "clientes|buscarOCrearCliente": "4. Clientes: destinatario validado",
+      "tarifario|cotizarEnvio": "5. Tarifario: envio cotizado",
+      "encomiendas|crearEncomienda": "6. Encomiendas: orden y codigo de rastreo creados",
+      "cobros|registrarCobro": "7. Cobros: cobro registrado",
+      "orquestador|compensar": "7C. Compensacion: se anulara la orden",
+      "encomiendas|anularEncomienda": "7C. Encomiendas: orden anulada",
+      "facturacion|emitirComprobante": "8. Facturacion: comprobante emitido",
+      "orquestador|diferir": "8D. Diferimiento: SUNAT/OSE no responde",
+      "facturacion|encolarEmision": "8D. Facturacion: emision diferida",
+      "broker|publicar": "9. Broker: evento de estado publicado",
+      "trazabilidad|registrarEvento": "10. Trazabilidad: evento registrado",
+      "notificaciones|enviarNotificacion": "11. Notificaciones: aviso (simulado)",
+      "orquestador|registrarEncomienda": "Proceso completo",
+    };
+    const OMITIR = new Set(["actualizarEstado", "outbox.guardar"]);
+
+    function pasoLegible(l) {
+      if (OMITIR.has(l.operacion)) return null;
+      if (l.servicio === "httpClient" && l.operacion?.startsWith("llamar:")) {
+        return { txt: `Reintento hacia ${l.operacion.split(":")[1]} (intento ${l.intento})`, cls: "var(--warn)" };
+      }
+      if (l.servicio === "httpClient" && l.operacion?.startsWith("circuito:")) {
+        return { txt: `Circuito abierto: ${l.operacion.split(":")[1]}`, cls: "var(--err)" };
+      }
+      const txt = MAPA[`${l.servicio}|${l.operacion}`];
+      if (!txt) return null;
+      const cls = l.resultado === "error" ? "var(--err)" : (l.operacion === "registrarEncomienda" ? "var(--ok)" : "var(--accent)");
+      return { txt, cls, detalle: l.detalle };
+    }
+
+    function agregarPaso(l) {
+      const p = pasoLegible(l);
+      if (!p) return;
+      const ul = $("#timeline");
+      if (ul.children.length === 1 && ul.children[0].classList.contains("muted")) ul.innerHTML = "";
+      const li = document.createElement("li");
+      li.style.borderColor = p.cls;
+      li.style.setProperty("--dot", p.cls);
+      li.innerHTML = `<b>${p.txt}</b><br><small>${l.ts.slice(11,23)}${p.detalle ? " - " + p.detalle : ""}</small>`;
+      li.querySelector("b").style.color = p.cls;
+      ul.appendChild(li);
+      ul.scrollTop = ul.scrollHeight;
+    }
+
+    $("#btnRegistrar").onclick = async () => {
+      if (!token) { $("#resultado").innerHTML = `<span class="badge b-warn">Primero inicia sesion.</span>`; return; }
+      const cid = nuevoCorrelationId();
+      $("#timeline").innerHTML = "";
+      $("#resultado").innerHTML = `<p class="muted">Procesando... observa la linea de tiempo abajo.</p>`;
+
+      // Abrir el stream ANTES de enviar, para capturar cada paso en vivo.
+      const es = new EventSource("/api/stream/" + encodeURIComponent(cid));
+      es.onmessage = (ev) => { try { agregarPaso(JSON.parse(ev.data)); } catch {} };
+
+      const cuerpo = {
+        sede: $("#sede").value,
+        tipoCliente: usuarioActual.perfil === "b2b" ? "b2b" : "normal",
+        destinatario: { nombre: $("#dNombre").value, documento: $("#dDoc").value, telefono: $("#dTel").value, direccion: $("#dDir").value, referencia: $("#dRef").value },
+        envio: { origen: $("#sede").value, destino: $("#destino").value, peso: +$("#peso").value, volumen: +$("#volumen").value, bultos: +$("#bultos").value, modalidad: $("#modalidad").value },
+        pago: { medio: "efectivo", turno: "manana" },
+      };
+      const r = await api("/api/encomiendas", { method: "POST", token, idemKey: $("#idem").value, correlationId: cid, body: cuerpo });
+      // Dar un momento a los eventos asincronos (coreografia) antes de cerrar el stream.
+      setTimeout(() => es.close(), 2000);
+
+      if (!r.ok) {
+        $("#resultado").innerHTML = `<span class="badge b-err">${r.data.error?.codigo || "Error"}</span>
+          <p>${r.data.error?.mensaje || ""}</p>
+          <div class="kv"><span>correlationId</span><span>${r.data.error?.correlationId || cid}</span></div>`;
+        return;
+      }
+      const d = r.data;
+      $("#resultado").innerHTML = `
+        <div style="margin-bottom:8px">${badgeEstado(d.estado)} ${d.comprobante?.idempotente ? '<span class="badge b-info">idempotente: respuesta original</span>' : ''}</div>
+        <div class="kv"><span>Codigo de rastreo</span><span><b>${d.codigoRastreo}</b></span></div>
+        <div class="kv"><span>correlationId</span><span>${d.correlationId}</span></div>
+        <div class="kv"><span>Tarifa</span><span>S/ ${d.tarifa}</span></div>
+        <div class="kv"><span>Comprobante</span><span>${d.comprobante?.serie ? d.comprobante.serie + "-" + d.comprobante.numero : (d.comprobante?.estado || "-")}</span></div>
+        ${d.nota ? `<p class="step-note">${d.nota}</p>` : ""}
+        <p class="step-note"><a href="rastreo.html?codigo=${encodeURIComponent(d.codigoRastreo)}" style="color:var(--accent)">Ver rastreo</a> - o reconstruye por correlationId en Monitoreo.</p>`;
+    };
+  </script>
+</body>
+</html>

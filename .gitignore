@@ -1,0 +1,4 @@
+node_modules/
+src/data/db/
+*.log
+CONTEXTO_Ejecutable_SOA_Senor_de_Luren.md
