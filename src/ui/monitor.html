@@ -28,8 +28,9 @@
         <span id="resetMsg" class="muted"></span>
       </div>
       <div class="card">
-        <h2>Salud de los servicios</h2>
-        <div id="health" class="grid" style="grid-template-columns:1fr 1fr"></div>
+        <h2>Sistema - servicios activos</h2>
+        <div id="sistemaInfo" class="muted" style="margin-bottom:8px"></div>
+        <div id="health"></div>
         <h2 style="margin-top:16px">Negocio y colas</h2>
         <div id="negocio"></div>
       </div>
@@ -75,9 +76,25 @@
 
     function color(est) { return est === "vivo" ? "b-ok" : est === "caido" ? "b-err" : "b-warn"; }
 
+    // Topologia del sistema (componentes y puertos, como en la consola al arrancar).
+    let topo = null;
+    async function cargarSistema() {
+      topo = (await api("/api/monitor/sistema")).data;
+      $("#sistemaInfo").innerHTML = `Gateway en puerto <b>${topo.gateway.puerto}</b> &middot; ${topo.servicios.length} servicios en puertos propios &middot; velocidad <b>x${topo.speed}</b>`;
+    }
+
     async function refrescar() {
       const salud = (await api("/api/monitor/health")).data;
-      $("#health").innerHTML = Object.entries(salud).map(([n, e]) => `<div class="kv"><span>${n}</span><span class="badge ${color(e)}">${e}</span></div>`).join("");
+      if (topo) {
+        let html = `<div class="kv" style="border-color:var(--accent)"><span><span class="badge b-info">gateway</span> <b>${topo.gateway.nombre}</b> <small class="muted">:${topo.gateway.puerto}</small></span><span class="badge b-ok">activo</span></div>`;
+        html += topo.servicios.map((s) => {
+          const e = salud[s.nombre] || "?";
+          return `<div class="kv"><span><b>${s.nombre}</b> <small class="muted">:${s.puerto}</small></span><span class="badge ${color(e)}">${e}</span></div>`;
+        }).join("");
+        $("#health").innerHTML = html;
+      } else {
+        $("#health").innerHTML = Object.entries(salud).map(([n, e]) => `<div class="kv"><span>${n}</span><span class="badge ${color(e)}">${e}</span></div>`).join("");
+      }
 
       const m = (await api("/api/monitor/metrics")).data;
       $("#metricas").innerHTML = Object.entries(m.servicios || {}).map(([n, s]) => {
@@ -116,6 +133,7 @@
     };
 
     await cargarFlags();
+    await cargarSistema();
     await refrescar();
     setInterval(refrescar, 2500);
   </script>

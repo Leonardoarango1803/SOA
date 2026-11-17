@@ -4,7 +4,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import express from "express";
-import { PORTS, SECURITY, flags, SIM, baseUrl } from "../config.js";
+import { PORTS, SECURITY, flags, SIM, SPEED, baseUrl } from "../config.js";
 import { emitirToken, verificarToken, autorizar } from "../shared/auth.js";
 import { nuevoCorrelationId, nuevaClaveIdempotencia } from "../shared/ids.js";
 import { log, reconstruir, ultimosLogs, bus } from "../shared/logger.js";
@@ -137,6 +137,17 @@ export function crearApp() {
       bus.off("log", onLog);
     });
   });
+  // Topologia del sistema: componentes y sus puertos (lo que se ve en la consola al arrancar).
+  app.get("/api/monitor/sistema", (req, res) => {
+    const nombres = ["tarifario", "clientes", "encomiendas", "cobros", "facturacion", "trazabilidad", "notificaciones", "recojo"];
+    res.json({
+      gateway: { nombre: "API Gateway", puerto: PORTS.gateway, rol: "gateway", descripcion: "Entrada unica: auth, autorizacion, correlationId, enrutamiento" },
+      servicios: nombres.map((n) => ({ nombre: n, puerto: PORTS[n], rol: "servicio" })),
+      speed: SPEED,
+      sim: SIM.nota,
+    });
+  });
+
   app.get("/api/monitor/flags", (req, res) => res.json(flags));
   app.post("/api/monitor/flags", (req, res) => {
     for (const k of ["failCobros", "failSunat", "slowCobros"]) {
