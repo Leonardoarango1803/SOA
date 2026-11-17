@@ -47,6 +47,15 @@ export function crearApp() {
 
   // --- Rutas publicas (no requieren token) ---
 
+  // Liveness para monitores de disponibilidad (UptimeRobot, etc.). Muy liviano: no toca la
+  // base de datos ni escribe logs. En Render (plan free) sirve para evitar que el servicio se
+  // duerma: configura un monitor HTTP(s) que consulte esta URL periodicamente.
+  const arrancado = Date.now();
+  const ping = (req, res) =>
+    res.json({ ok: true, servicio: "soa-senor-de-luren", uptimeSeg: Math.round((Date.now() - arrancado) / 1000), ts: new Date().toISOString() });
+  app.get("/ping", ping);
+  app.get("/healthz", ping);
+
   // Datos para poblar la UI.
   app.get("/api/seed", (req, res) => {
     res.json({ usuarios: USUARIOS, agencias: AGENCIAS, tarifas: TARIFAS, simulado: SIM.nota });

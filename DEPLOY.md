@@ -62,6 +62,23 @@ gh repo create soa-senor-de-luren --private --source=. --remote=origin --push
   desde Monitoreo). **Recomendacion:** usa el despliegue como enlace para compartir, pero para
   la demo en vivo corre tambien localmente (`npm start`), que es lo mas confiable.
 
+### Mantener el servicio despierto con un monitor de disponibilidad (UptimeRobot)
+
+El prototipo expone un endpoint liviano **`/ping`** (alias `/healthz`) que responde 200 sin tocar
+la base de datos ni escribir logs. Sirve para que un monitor externo mantenga el servicio despierto
+en el plan free de Render.
+
+1. Crea una cuenta gratis en <https://uptimerobot.com>.
+2. **Add New Monitor** → tipo **HTTP(s)**.
+3. URL: `https://<tu-servicio>.onrender.com/ping`
+4. **Monitoring interval:** el servicio se duerme tras ~15 min de inactividad, asi que 15 min queda
+   justo en el limite. Para que no se duerma de forma confiable, usa **5-10 min** (en UptimeRobot
+   free el minimo es 5 min). Si solo quieres saber si esta vivo y no te importa el arranque en frio,
+   15 min esta bien.
+5. Guarda. El monitor consultara `/ping` en ese intervalo; una respuesta 200 significa "vivo".
+
+> Respuesta de ejemplo: `{"ok":true,"servicio":"soa-senor-de-luren","uptimeSeg":1234,"ts":"..."}`.
+
 ### Datos persistentes en Render (opcional, plan de pago)
 1. En el servicio, agrega un **Disk** (p. ej. montado en `/var/data`).
 2. Agrega la variable `SOA_DB_DIR = /var/data`. Las bases SQLite viviran en el disco y
